@@ -1,57 +1,163 @@
-# C "Hello, World!"
+# Path 2: Block I/O Benchmark for Unikraft
 
-This directory contains a C-based "Hello, World!" example running on Unikraft.
+Tests disk I/O performance to evaluate if Unikraft is suitable for a high-performance DBMS.
 
-## Set Up
+## Project Goal
 
-To run this example, [install Unikraft's companion command-line toolchain `kraft`](https://unikraft.org/docs/cli), clone this repository and `cd` into this directory.
+Compare storage access approaches in Unikraft:
+1. **VFS + 9P** (host directory mount) - currently working
+2. **VFS + virtio-blk** (virtual disk) - driver loads, access in progress
+3. **Raw virtio-blk** (direct block access) - future goal
 
-## Run and Use
+## Quick Start
 
-Use `kraft` to run the image and start a Unikraft instance:
-
-```bash
-kraft run --rm --plat qemu --arch x86_64 .
-```
-
-If the `--plat` argument is left out, it defaults to `qemu`.
-If the `--arch` argument is left out, it defaults to your system's CPU architecture.
-
-Once executed, you should see a "Bye, World!" message.
-
-## Inspect and Close
-
-To list information about the Unikraft instance, use:
+### First Time Setup
 
 ```bash
-kraft ps
+# Build the unikernel
+yes | kraft build --plat qemu --arch x86_64
+
+# Create data directory for 9P mount
+mkdir -p data
+
+# Create test disk for virtio-blk (optional)
+qemu-img create -f raw test-disk.img 64M
+mkfs.ext4 -F test-disk.img
 ```
 
-```text
-NAME       KERNEL                          ARGS         CREATED        STATUS   MEM  PORTS  PLAT
-crazy_gua  oci://unikraft.org/base:latest  /helloworld  9 seconds ago  running  64M         qemu/x86_64
-```
-
-The instance name is `crazy_gua`.
-To close the Unikraft instance, close the `kraft` process (e.g., via `Ctrl+c`) or run:
+### Run the Benchmark
 
 ```bash
-kraft rm crazy_gua
+qemu-system-x86_64 \
+    -machine q35 -cpu host -enable-kvm -m 256M -nographic \
+    -kernel .unikraft/build/blockio-test_qemu-x86_64 \
+    -initrd .unikraft/build/initramfs-x86_64.cpio \
+    -drive file=test-disk.img,format=raw,if=virtio \
+    -fsdev local,id=myfs,path=./data,security_model=none \
+    -device virtio-9p-pci,fsdev=myfs,mount_tag=fs1 \
+    -append "console=ttyS0 vfs.fstab=[fs1:/data:9pfs:rw]"
 ```
 
-Note that depending on how you modify this example your instance **may** need more memory to run.
-To do so, use the `kraft run`'s `-M` flag, for example:
+Results are printed to the console and saved to `data/results.txt`.
+
+### After Code Changes
 
 ```bash
-kraft run --rm --plat qemu --arch x86_64 -M 256M .
+# Rebuild and run
+yes | kraft build --plat qemu --arch x86_64
+
+# Then run the QEMU command above
 ```
 
-## `kraft` and `sudo`
+## Current Status
 
-Mixing invocations of `kraft` and `sudo` can lead to unexpected behavior.
-Read more about how to start `kraft` without `sudo` at [https://unikraft.org/sudoless](https://unikraft.org/sudoless).
+### What Works
 
-## Learn More
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Unikraft kernel build | ✅ | Builds from source with virtio-blk |
+| virtio-blk driver | ✅ | `Registered blkdev0: virtio-blk` |
+| VFS/RamFS | ✅ | Root filesystem works |
+| devfs | ✅ | Mounts to /dev |
+| 9P filesystem | ✅ | Host directory mounts work |
+| Sequential I/O tests | ✅ | Working, see results below |
+| Random I/O tests | ✅ | Uses simple LCG random |
+| Raw /dev/vda access | ⏳ | Device registered, VFS access TBD |
 
-- [How to run unikernels locally](https://unikraft.org/docs/cli/running)
-- [Building `Dockerfile` Images with `BuildKit`](https://unikraft.org/guides/building-dockerfile-images-with-buildkit)
+### Performance Results (RamFS)
+
+Sequential I/O through VFS layer on RamFS (data stored in memory):
+
+| Block Size | Write | Read |
+|------------|-------|------|
+| 4KB | 7 MB/s | 8,000-16,000 MB/s |
+| 64KB | 110 MB/s | 10,000-25,000 MB/s |
+| 1MB | 1,000 MB/s | 6,000-16,000 MB/s |
+
+**Note:** Read speeds are very high because data is in RAM. Write speeds reflect VFS/syscall overhead.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│              Your Application                    │
+│            (C benchmark code)                   │
+└───────────────────┬─────────────────────────────┘
+                    │ POSIX syscalls
+                    ▼
+┌─────────────────────────────────────────────────┐
+│           Unikraft Syscall Shim                 │
+│        (intercepts open/read/write/etc)         │
+└───────────────────┬─────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────┐
+│              VFS Layer (vfscore)                │
+│           (generic filesystem ops)              │
+└──────┬────────────────────────┬─────────────────┘
+       │                        │
+       ▼                        ▼
+┌──────────────┐      ┌──────────────────────────┐
+│   RamFS      │      │    9P Client (fs1)       │
+│ (root: /)    │      │  (mounted at /data)      │
+└──────────────┘      └────────────┬─────────────┘
+                                   │
+                                   ▼
+                      ┌──────────────────────────┐
+                      │   virtio-9p driver       │
+                      └────────────┬─────────────┘
+                                   │
+                                   ▼
+                      ┌──────────────────────────┐
+                      │   Host Filesystem        │
+                      │   (./data directory)     │
+                      └──────────────────────────┘
+
+Also available (not yet fully integrated):
+┌──────────────────────────────────────────────────┐
+│  virtio-blk driver ──► blkdev0 ──► test-disk.img│
+└──────────────────────────────────────────────────┘
+```
+
+## Project Structure
+
+```
+unikraft-c/
+├── Kraftfile              # Unikraft build configuration
+├── Dockerfile             # Builds C binary for initramfs
+├── src/                   # C benchmark source code
+│   ├── main.c
+│   ├── benchmark.c/h
+│   ├── file_io.c/h
+│   └── block_io.c/h
+├── data/                  # 9P mount point (created on first run)
+├── test-disk.img          # virtio-blk disk image
+└── .unikraft/build/       # Built kernel and initramfs
+```
+
+## Known Issues
+
+1. **Shutdown assertion** - `Assertion failure: uk_list_empty(&fid_mgmt->fid_active_list)` on exit. This is a 9P cleanup bug, doesn't affect benchmark results.
+
+2. **Raw block device access** - virtio-blk is detected but /dev/vda isn't accessible through VFS yet. Need to either mount a filesystem on it or use raw block device API.
+
+## Building from Source
+
+The Kraftfile configures a native Unikraft build with:
+- virtio-blk driver
+- VFS layer
+- RamFS (root filesystem)
+- 9P client (for /data mount)
+- devfs (for /dev)
+- musl libc
+
+Rebuild with:
+```bash
+yes | kraft build --plat qemu --arch x86_64
+```
+
+## Next Steps
+
+1. **Get /dev/vda working** - Either mount ext4 filesystem on it, or use libukblkdev API directly
+2. **Add block device benchmarks** - Compare virtio-blk vs 9P performance  
+3. **Profile VFS overhead** - Measure syscall shim + VFS layer costs

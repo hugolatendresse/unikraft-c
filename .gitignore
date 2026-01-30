@@ -1,4 +1,7 @@
 .unikraft/
-unikraft
-
+unikraft/
+build/
+*.img
+*.qcow2
+.config.*
 .cursor/

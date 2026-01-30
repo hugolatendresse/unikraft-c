@@ -1,0 +1,7 @@
+### App configuration for Block I/O Test
+config APPBLOCKIOTEST
+	bool "Block I/O Benchmark Test"
+	default y
+	help
+	  A benchmark application to test block I/O performance
+	  with Unikraft's VFS layer and virtio-blk driver.

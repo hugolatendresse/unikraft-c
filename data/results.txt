@@ -1,0 +1,9 @@
+Test Name,Throughput (MB/s),IOPS,Avg Latency (us),P99 Latency (us),Bytes/Ops
+FS Sequential 4KB Write,31.6392,0,316064,0,10485760
+FS Sequential 4KB Read,156.637,0,63842,0,10485760
+FS Sequential 64KB Write,349.089,0,28646,0,10485760
+FS Sequential 64KB Read,1704.45,0,5867,0,10485760
+FS Sequential 1MB Write,968.054,0,10330,0,10485760
+FS Sequential 1MB Read,4180.6,0,2392,0,10485760
+FS Random 4KB (50% read),0,13964.3,68,130,1000
+FS Random 4KB (80% read),0,22648.5,42,149,1000

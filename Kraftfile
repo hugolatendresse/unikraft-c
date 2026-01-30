@@ -1,9 +1,50 @@
 spec: v0.6
 
-name: helloworld-gcc15.2
+name: blockio-test
 
-runtime: base:latest
+unikraft:
+  version: stable
+  kconfig:
+    # Use InitRD (CPIO) with RamFS as writable root - this extracts CPIO to RAM
+    CONFIG_LIBVFSCORE_AUTOMOUNT_CI: 'y'
+    CONFIG_LIBVFSCORE_AUTOMOUNT_CI_INITRD: 'y'
+    
+    # Core VFS support
+    CONFIG_LIBVFSCORE: 'y'
+    CONFIG_LIBVFSCORE_FSTAB: 'y'
+    
+    # Device filesystem (exposes /dev/vda)
+    CONFIG_LIBDEVFS: 'y'
+    CONFIG_LIBDEVFS_AUTOMOUNT: 'y'
+    
+    # Block device support
+    CONFIG_LIBUKBLKDEV: 'y'
+    
+    # virtio support
+    CONFIG_VIRTIO_BUS: 'y'
+    CONFIG_VIRTIO_PCI: 'y'
+    CONFIG_VIRTIO_BLK: 'y'
+    
+    # RAM filesystem for rootfs
+    CONFIG_LIBRAMFS: 'y'
+    
+    # CPIO extraction
+    CONFIG_LIBUKCPIO: 'y'
+    
+    # 9P for comparison
+    CONFIG_LIBUK9P: 'y'
+    CONFIG_LIB9PFS: 'y'
+    
+    # Debug output
+    CONFIG_LIBUKDEBUG_PRINTK_INFO: 'y'
+
+libraries:
+  musl: stable
+
+targets:
+  - platform: qemu
+    architecture: x86_64
 
 rootfs: ./Dockerfile
 
-cmd: ["/helloworld"]
+cmd: ["/blockio-test"]
