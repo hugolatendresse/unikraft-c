@@ -5,35 +5,25 @@ name: blockio-test
 unikraft:
   version: stable
   kconfig:
-    # Use InitRD (CPIO) with RamFS as writable root - this extracts CPIO to RAM
-    CONFIG_LIBVFSCORE_AUTOMOUNT_CI: 'y'
-    CONFIG_LIBVFSCORE_AUTOMOUNT_CI_INITRD: 'y'
-    
-    # Core VFS support
-    CONFIG_LIBVFSCORE: 'y'
-    CONFIG_LIBVFSCORE_FSTAB: 'y'
-    
-    # Device filesystem (exposes /dev/vda)
-    CONFIG_LIBDEVFS: 'y'
-    CONFIG_LIBDEVFS_AUTOMOUNT: 'y'
-    
-    # Block device support
+    # Block device support - DIRECT ACCESS (no VFS)
     CONFIG_LIBUKBLKDEV: 'y'
+    CONFIG_LIBUKBLKDEV_SYNC_IO_BLOCKED_WAITING: 'y'
     
     # virtio support
     CONFIG_VIRTIO_BUS: 'y'
     CONFIG_VIRTIO_PCI: 'y'
     CONFIG_VIRTIO_BLK: 'y'
     
-    # RAM filesystem for rootfs
-    CONFIG_LIBRAMFS: 'y'
+    # Scheduler (required for sync I/O semaphores)
+    CONFIG_LIBUKSCHEDCOOP: 'y'
     
-    # CPIO extraction
-    CONFIG_LIBUKCPIO: 'y'
-    
-    # 9P for comparison
-    CONFIG_LIBUK9P: 'y'
-    CONFIG_LIB9PFS: 'y'
+    # Disable ALL VFS automount features (vfscore is pulled in by musl but we don't use it)
+    CONFIG_LIBVFSCORE_AUTOMOUNT_CI: 'n'
+    CONFIG_LIBVFSCORE_AUTOMOUNT_UP: 'n'
+    CONFIG_LIBVFSCORE_AUTOMOUNT_FB: 'n'
+    CONFIG_LIBVFSCORE_AUTOMOUNT: 'n'
+    CONFIG_LIBVFSCORE_AUTOUNMOUNT: 'n'
+    CONFIG_LIBDEVFS_AUTOMOUNT: 'n'
     
     # Debug output
     CONFIG_LIBUKDEBUG_PRINTK_INFO: 'y'
@@ -44,7 +34,5 @@ libraries:
 targets:
   - platform: qemu
     architecture: x86_64
-
-rootfs: ./Dockerfile
 
 cmd: ["/blockio-test"]
